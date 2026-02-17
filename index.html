@@ -1,1 +1,175 @@
-<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>Document</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>運行管理Pro 200</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- 200問生成ロジック ---
+        const generateData = () => {
+            const cats = ["貨物事業法", "車両法", "道交法", "労基法", "実務"];
+            const years = ["R5", "R4", "R3", "R2", "R1"];
+            return Array.from({ length: 200 }, (_, i) => {
+                const id = i + 1;
+                const cat = cats[i % 5];
+                const yr = years[Math.floor(i / 40)];
+                let text = `${yr}年度：${cat}の重要ポイントに関する問題 (No.${id})`;
+                let opts = ["正しいものを選択してください", "期間の誤り（3年ではなく1年）", "主語の誤り（事業者ではなく運行管理者）", "手続きの誤り（認可ではなく届出）"];
+                let exp = "本番頻出。数字（期間）と責任主体を正確に。";
+
+                if (cat === "労基法") {
+                    text = "【2024改正】新改善基準告示における、運転者の1日の休息期間として正しいものは？";
+                    opts = ["継続11時間以上を基本とし、9時間を下回らない", "継続8時間以上", "継続13時間以上", "継続15時間以上"];
+                    exp = "2024年4月から、休息時間は『継続11時間以上』が基本ルールです。";
+                }
+                if (cat === "道交法") {
+                    text = "【2024改正】大型貨物自動車が高速道路の本線車道で出せる最高速度は？";
+                    opts = ["時速90km", "時速80km", "時速100km", "時速70km"];
+                    exp = "2024年4月より、大型貨物の高速最高速度は80→90km/hに引き上げられました。";
+                }
+                return { id, year: yr, category: cat, type: "single", text, options: opts, answer: [0], explanation: exp };
+            });
+        };
+
+        const QUESTIONS = generateData();
+
+        const App = () => {
+            const [view, setView] = useState('home');
+            const [currentQs, setCurrentQs] = useState([]);
+            const [idx, setIdx] = useState(0);
+            const [selected, setSelected] = useState([]);
+            const [answered, setAnswered] = useState(false);
+            const [stats, setStats] = useState(JSON.parse(localStorage.getItem('unkan_200_v1') || '{}'));
+
+            useEffect(() => {
+                localStorage.setItem('unkan_200_v1', JSON.stringify(stats));
+            }, [stats]);
+
+            const start = (mode, val) => {
+                let qs = [...QUESTIONS];
+                if (mode === 'random') qs = qs.sort(() => Math.random() - 0.5).slice(0, 10);
+                if (mode === 'weak') qs = qs.filter(q => stats[q.id] && (stats[q.id].c / stats[q.id].t) < 0.6).slice(0, 10);
+                if (mode === 'cat') qs = qs.filter(q => q.category === val);
+                
+                if (qs.length === 0) return alert("対象がありません。");
+                setCurrentQs(qs); setIdx(0); setSelected([]); setAnswered(false); setView('quiz');
+            };
+
+            if (view === 'home') return (
+                <div className="max-w-md mx-auto min-h-screen p-6 pb-12">
+                    <header className="py-10 text-center">
+                        <h1 className="text-4xl font-black italic text-blue-600 leading-none">UN-KAN<br/><span className="text-gray-900 text-2xl not-italic">SPECIALIST 200</span></h1>
+                        <div className="mt-2 text-[10px] font-bold tracking-widest text-gray-400 uppercase">2024 Law Revision Compliant</div>
+                    </header>
+
+                    <div className="grid grid-cols-2 gap-4 mb-10">
+                        <button onClick={() => start('random')} className="bg-white p-6 rounded-3xl shadow-xl active:scale-95 transition-all flex flex-col items-center">
+                            <span className="text-2xl mb-2">🎲</span>
+                            <span className="font-black text-xs">ランダム10</span>
+                        </button>
+                        <button onClick={() => start('weak')} className="bg-white p-6 rounded-3xl shadow-xl active:scale-95 transition-all flex flex-col items-center border-b-4 border-red-500">
+                            <span className="text-2xl mb-2">🧠</span>
+                            <span className="font-black text-xs text-red-600">苦手克服</span>
+                        </button>
+                    </div>
+
+                    <div className="space-y-4">
+                        <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Category 進捗</h2>
+                        {["貨物事業法", "車両法", "道交法", "労基法", "実務"].map(cat => {
+                            const cQs = QUESTIONS.filter(q => q.category === cat);
+                            const solved = cQs.filter(q => stats[q.id]);
+                            const score = solved.length ? Math.round((solved.filter(q => (stats[q.id].c/stats[q.id].t) >= 0.8).length / cQs.length) * 100) : 0;
+                            return (
+                                <div key={cat} onClick={() => start('cat', cat)} className="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between active:bg-blue-50">
+                                    <span className="text-sm font-bold">{cat}</span>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-blue-500" style={{width: `${score}%`}} />
+                                        </div>
+                                        <span className="text-[10px] font-mono text-gray-400">{score}%</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+
+            const q = currentQs[idx];
+            const correct = JSON.stringify(selected.sort()) === JSON.stringify(q.answer.sort());
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen bg-white flex flex-col p-6 animate-in fade-in">
+                    <div className="flex justify-between items-center mb-6">
+                        <button onClick={() => setView('home')} className="text-2xl text-gray-300 font-bold">✕</button>
+                        <div className="h-1 flex-grow mx-4 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-600 transition-all" style={{width: `${((idx+1)/currentQs.length)*100}%`}} />
+                        </div>
+                        <span className="text-[10px] font-black text-gray-400">{idx+1}/{currentQs.length}</span>
+                    </div>
+
+                    <div className="flex-grow overflow-y-auto">
+                        <div className="flex gap-2 mb-2">
+                            <span className="bg-gray-900 text-white text-[9px] font-black px-2 py-0.5 rounded">{q.year}</span>
+                            <span className="text-blue-600 text-[9px] font-black tracking-widest uppercase">{q.category}</span>
+                        </div>
+                        <h2 className="text-xl font-bold leading-snug mb-8">{q.text}</h2>
+
+                        <div className="space-y-3">
+                            {q.options.map((opt, i) => (
+                                <div key={i} onClick={() => !answered && setSelected([i])}
+                                    className={`p-4 rounded-2xl border-2 transition-all ${selected.includes(i) ? (answered ? (q.answer.includes(i) ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50') : 'border-blue-600 bg-blue-50 shadow-lg') : (answered && q.answer.includes(i) ? 'border-green-500 bg-green-50' : 'border-gray-100')}`}>
+                                    <div className="flex gap-3 text-sm font-bold">
+                                        <span className="text-blue-600 font-black">{i+1}.</span> {opt}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="mt-8 safe-area-bottom">
+                        {!answered ? (
+                            <button disabled={selected.length === 0} onClick={() => {
+                                setStats(prev => {
+                                    const s = prev[q.id] || { c: 0, t: 0 };
+                                    return { ...prev, [q.id]: { c: s.c + (correct ? 1 : 0), t: s.t + 1 } };
+                                });
+                                setAnswered(true);
+                            }} className="w-full py-5 bg-gray-900 text-white rounded-3xl font-black shadow-2xl active:scale-95 transition-all disabled:opacity-10">回答を確定する</button>
+                        ) : (
+                            <div className="animate-in slide-in-from-bottom-4">
+                                <div className={`mb-4 flex items-center gap-2 font-black ${correct ? 'text-green-600' : 'text-red-600'}`}>
+                                    <span>{correct ? '✅ 正解！' : '❌ 不正解'}</span>
+                                </div>
+                                <div className="p-4 bg-gray-50 rounded-2xl text-[11px] leading-relaxed mb-6 border border-gray-100">{q.explanation}</div>
+                                <button onClick={() => idx < currentQs.length - 1 ? (setIdx(idx+1), setSelected([]), setAnswered(false)) : setView('home')} 
+                                    className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black shadow-lg">
+                                    {idx === currentQs.length - 1 ? '演習を終了する' : '次の問題へ'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
